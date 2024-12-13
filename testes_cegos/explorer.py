@@ -61,18 +61,17 @@ class Explorer(AbstAgent):
             current_pos = self.stack.pop()
             self.visited.add(current_pos)
             self.x, self.y = current_pos
-
             # Check the neighborhood walls and grid limits
             obstacles = self.check_walls_and_lim()
-
-            for direction, (dx, dy) in Explorer.AC_INCR.items():
+            directions = list(Explorer.AC_INCR.items())
+            random.shuffle(directions)  # Shuffle the directions to add randomness
+            for direction, (dx, dy) in directions:
                 if obstacles[direction] == VS.CLEAR:
                     next_pos = (self.x + dx, self.y + dy)
                     if next_pos not in self.visited:
                         self.stack.push(current_pos)  # push current position back to stack
                         self.stack.push(next_pos)  # push next position to stack
                         return dx, dy
-
         return 0, 0  # if no more positions to explore, stay in place
         
     def explore(self):
@@ -157,6 +156,7 @@ class Explorer(AbstAgent):
 
         # no more come back walk actions to execute or already at base
         if self.walk_stack.is_empty() or (self.x == 0 and self.y == 0):
+            print("Cabo o tempo de exploracao")
             # time to pass the map and found victims to the master rescuer
             self.resc.sync_explorers(self.map, self.victims)
             # finishes the execution of this agent
@@ -165,4 +165,3 @@ class Explorer(AbstAgent):
         # proceed to the base
         self.come_back()
         return True
-
