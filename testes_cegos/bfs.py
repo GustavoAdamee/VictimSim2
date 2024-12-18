@@ -92,8 +92,8 @@ class BFS:
                     self.frontier.append((child, new_plan, new_acc_cost))  #append child
                 
 
-                    
-        return None, 0  # No path found
+        #QUICK FIX   
+        return [], 0  # No path found
 
 # Example usage: it is a script not used when importe by other module
 if __name__ == '__main__':
