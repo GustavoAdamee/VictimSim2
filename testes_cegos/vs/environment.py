@@ -299,7 +299,8 @@ class Env:
                     more_actions_to_do = body.mind.deliberate()
 
                     if cycle % 50 == 0:
-                       print(f"ENV: cycle {cycle} {body.mind.NAME} remaining: {body._rtime}")
+                    #    print(f"ENV: cycle {cycle} {body.mind.NAME} remaining: {body._rtime}") ----
+                        pass
 
                     # Test if the agent exceeded the time limit
                     if body._end_of_time():

@@ -13,6 +13,40 @@ from vs.abstract_agent import AbstAgent
 from vs.constants import VS
 from map import Map
 
+#-----------------------------------------------------------
+from collections import deque
+
+def bfs(start, goal, get_neighbors):
+    """Breadth-First Search to find the shortest path from start to goal using the explored map."""
+    queue = deque([start])
+    came_from = {start: None}
+
+    while queue:
+        current = queue.popleft()
+
+        if current == goal:
+            break
+
+        for neighbor in get_neighbors(current):
+            if neighbor not in came_from:
+                queue.append(neighbor)
+                came_from[neighbor] = current
+
+    # Check if the goal was reached
+    if goal not in came_from:
+        return []
+
+    # Reconstruct path
+    path = []
+    current = goal
+    while current is not None:
+        path.append(current)
+        current = came_from[current]
+    path.reverse()
+    return path
+
+#-----------------------------------------------------------
+
 class Stack:
     def __init__(self):
         self.items = []
@@ -31,7 +65,7 @@ class Explorer(AbstAgent):
     """ class attribute """
     MAX_DIFFICULTY = 1             # the maximum degree of difficulty to enter into a cell
     
-    def __init__(self, env, config_file, resc):
+    def __init__(self, env, config_file, resc, priorities_vector):
         """ Construtor do agente random on-line
         @param env: a reference to the environment 
         @param config_file: the absolute path to the explorer's config file
@@ -39,6 +73,7 @@ class Explorer(AbstAgent):
         """
 
         super().__init__(env, config_file)
+        self.env = env
         self.walk_stack = Stack()  # a stack to store the movements
         self.walk_time = 0         # time consumed to walk when exploring (to decide when to come back)
         self.set_state(VS.ACTIVE)  # explorer is active since the begin
@@ -52,8 +87,29 @@ class Explorer(AbstAgent):
         self.stack = Stack()       # stack for DFS
         self.stack.push((self.x, self.y))  # start from the base
 
+        # priorities for the explorer on the DFS
+        # example: [2, 1, 0, 7, 6, 5, 4, 3]
+        self.priorities = priorities_vector
+
+        self.path_to_base = []
+
         # put the current position - the base - in the map
         self.map.add((self.x, self.y), 1, VS.NO_VICTIM, self.check_walls_and_lim())
+
+    def get_neighbors(self, pos):
+        """Get valid neighboring positions based on the explored map."""
+        x, y = pos
+        neighbors = [(x+1, y), (x-1, y), (x, y+1), (x, y-1), (x+1, y+1), (x-1, y-1), (x+1, y-1), (x-1, y+1)]
+        # Filter out invalid positions (e.g., not explored)
+        valid_neighbors = [n for n in neighbors if self.is_valid_position(n)]
+        return valid_neighbors
+
+    def is_valid_position(self, pos):
+        """Check if the position is valid based on the explored map."""
+        if pos in self.map.data:
+            actions_results = self.map.get_actions_results(pos)
+            return VS.CLEAR in actions_results
+        return False
 
     def get_next_position(self):
         """ Uses an online DFS to get the next position that can be explored (no wall and inside the grid). """
@@ -64,15 +120,20 @@ class Explorer(AbstAgent):
             # Check the neighborhood walls and grid limits
             obstacles = self.check_walls_and_lim()
             directions = list(Explorer.AC_INCR.items())
-            random.shuffle(directions)  # Shuffle the directions to add randomness
+            
+            # Order the directions according to the priorities
+            directions.sort(key=lambda x: self.priorities.index(x[0]))
+
             for direction, (dx, dy) in directions:
                 if obstacles[direction] == VS.CLEAR:
                     next_pos = (self.x + dx, self.y + dy)
                     if next_pos not in self.visited:
                         self.stack.push(current_pos)  # push current position back to stack
                         self.stack.push(next_pos)  # push next position to stack
-                        return dx, dy
-        return 0, 0  # if no more positions to explore, stay in place
+                        return Explorer.AC_INCR[direction]
+        print("No more positions to explore")
+        return (0, 0)  # if no more positions to explore, stay in place
+        # return 0, 0  # if no more positions to explore, stay in place
         
     def explore(self):
         # get an random increment for x and y       
@@ -124,8 +185,27 @@ class Explorer(AbstAgent):
             #print(f"{self.NAME}:at ({self.x}, {self.y}), diffic: {difficulty:.2f} vict: {seq} rtime: {self.get_rtime()}")
 
         return
-
+    
     def come_back(self):
+        # if not self.path_to_base:
+        #     self.path_to_base = bfs((self.x, self.y), (0, 0), self.get_neighbors)
+        
+        # if len(self.path_to_base) > 1:
+        #     next_step = self.path_to_base[1]
+        #     dx = next_step[0] - self.x
+        #     dy = next_step[1] - self.y
+
+        #     result = self.walk(dx, dy)
+        #     if result == VS.BUMPED:
+        #         print(f"{self.NAME}: when coming back bumped at ({self.x+dx}, {self.y+dy}) , rtime: {self.get_rtime()}")
+        #         return
+            
+        #     if result == VS.EXECUTED:
+        #         # update the agent's position relative to the origin
+        #         self.x += dx
+        #         self.y += dy
+        #         print(f"{self.NAME}: coming back at ({self.x}, {self.y}), rtime: {self.get_rtime()}")
+        #         self.path_to_base.pop(0)
         dx, dy = self.walk_stack.pop()
         dx = dx * -1
         dy = dy * -1
@@ -147,21 +227,19 @@ class Explorer(AbstAgent):
 
         # forth and back: go, read the vital signals and come back to the position
 
-        time_tolerance = 2* self.COST_DIAG * Explorer.MAX_DIFFICULTY + self.COST_READ
+        time_tolerance = 2 * self.COST_DIAG * Explorer.MAX_DIFFICULTY + self.COST_READ
 
         # keeps exploring while there is enough time
-        if  self.walk_time < (self.get_rtime() - time_tolerance):
+        if self.walk_time < (self.get_rtime() - time_tolerance):
             self.explore()
             return True
 
         # no more come back walk actions to execute or already at base
         if self.walk_stack.is_empty() or (self.x == 0 and self.y == 0):
             print("Cabo o tempo de exploracao")
-            # time to pass the map and found victims to the master rescuer
             self.resc.sync_explorers(self.map, self.victims)
-            # finishes the execution of this agent
             return False
-        
+
         # proceed to the base
         self.come_back()
         return True
