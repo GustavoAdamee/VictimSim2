@@ -174,16 +174,31 @@ class Rescuer(AbstAgent):
         start = (0,0) # always from starting at the base
         for vic_id in sequence:
             goal = sequence[vic_id][0]
+            # print(f"{self.NAME} Plan: from {start} to {goal}")
             plan, time = bfs.search(start, goal, self.plan_rtime)
-            self.plan = self.plan + plan
-            self.plan_rtime = self.plan_rtime - time
-            start = goal
+            if plan:
+                self.plan = self.plan + plan
+                self.plan_rtime = self.plan_rtime - time
+                start = goal
+            else:
+                print(f"{self.NAME} Plan fail - no path between {start} and {goal}")
+                break
+            # self.plan = self.plan + plan
+            # self.plan_rtime = self.plan_rtime - time
+            # start = goal
 
         # Plan to come back to the base
         goal = (0,0)
+        # print(f"{self.NAME} Plan to base: from {start} to {goal}")
         plan, time = bfs.search(start, goal, self.plan_rtime)
+        # print(f"{self.NAME} Plan to base: {plan} time: {time}")
         self.plan = self.plan + plan
         self.plan_rtime = self.plan_rtime - time
+        # if(self.NAME == "RESC_4"):
+        #     print(f"{self.NAME} Plan: {self.plan}")
+        #     print(f"{self.NAME} Plan time: {self.plan_rtime}")
+        # print(f"{self.NAME} Plan: {self.plan}")
+        # print(f"{self.NAME} Plan time: {self.plan_rtime}")
            
 
     def sync_explorers(self, explorer_map, victims):
@@ -238,6 +253,8 @@ class Rescuer(AbstAgent):
             # In this case, each agent has just one cluster and one sequence
             self.sequences = self.clusters         
 
+            print("Victims--->", self.victims)
+
             # For each rescuer, we calculate the rescue sequence 
             for i, rescuer in enumerate(rescuers):
                 rescuer.sequencing()         # the sequencing will reorder the cluster
@@ -267,7 +284,7 @@ class Rescuer(AbstAgent):
 
         # Takes the first action of the plan (walk action) and removes it from the plan
         dx, dy = self.plan.pop(0)
-        #print(f"{self.NAME} pop dx: {dx} dy: {dy} ")
+        # print(f"{self.NAME} pop dx: {dx} dy: {fdy} ")
 
         # Walk - just one step per deliberation
         walked = self.walk(dx, dy)
@@ -276,7 +293,9 @@ class Rescuer(AbstAgent):
         if walked == VS.EXECUTED:
             self.x += dx
             self.y += dy
-            #print(f"{self.NAME} Walk ok - Rescuer at position ({self.x}, {self.y})")
+            # if(self.NAME == "RESC_4"):
+                # print(f"{self.NAME} Walk ok - Rescuer at position ({self.x}, {self.y})")
+            # print(f"{self.NAME} Walk ok - Rescuer at position ({self.x}, {self.y})")
 
             # check if there is a victim at the current position
             if self.map.in_map((self.x, self.y)):
@@ -286,7 +305,9 @@ class Rescuer(AbstAgent):
                     #if self.first_aid(): # True when rescued
                         #print(f"{self.NAME} Victim rescued at ({self.x}, {self.y})")                    
         else:
-            print(f"{self.NAME} Plan fail - walk error - agent at ({self.x}, {self.x})")
+            # if(self.NAME == "RESC_4"):
+                # print(f"{self.NAME} Plan fail - walk error - agent at ({self.x}, {self.y}) + ({dx},{dy})")
+            pass
             
         return True
 

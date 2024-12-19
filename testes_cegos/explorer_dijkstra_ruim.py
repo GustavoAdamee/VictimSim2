@@ -1,12 +1,15 @@
 # EXPLORER AGENT
 ### It walks in the environment looking for victims.
 
+# import sys
+# import os
 import random
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
 from map import Map
+from numpy.random import choice
+from dijkstra import Dijkstra
 import heapq
-from math import sqrt
 
 class Stack:
     def __init__(self):
@@ -37,15 +40,10 @@ class EdgeManager:
     def check_edge(self, node1, node2):
         return node1 in self.edges and node2 in self.edges[node1]
 
-
-def heuristic(node1, node2):
-    x1, y1 = node1
-    x2, y2 = node2
-    return sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-
 class Explorer(AbstAgent):
     """ class attribute """
     MAX_DIFFICULTY = 3
+
     def __init__(self, env, config_file, resc, priorities_vector):
         """ Construtor do agente [inserir algoritimo de busca]
         @param env: a reference to the environment
@@ -68,9 +66,7 @@ class Explorer(AbstAgent):
         # put the current position - the base - in the map
         self.map.add((self.x, self.y), 1, VS.NO_VICTIM, self.check_walls_and_lim())
         self.visited.add((self.x, self.y))
-        self.is_coming_back = False
         self.back_plan = []        # the plan to come back to the base
-        self.back_plan_cost = 0    # the cost of the plan to come back to the base
         self.edge_manager = EdgeManager()
         self.movements = priorities_vector
         self.graph = {}
@@ -83,25 +79,23 @@ class Explorer(AbstAgent):
         self.graph[node1][node2] = cost
         self.graph[node2][node1] = cost
 
-    def a_star(self, start, goal):
+    def dijkstra(self, start, goal):
         queue = [(0, start)]
-        g_costs = {start: 0}
-        f_costs = {start: heuristic(start, goal)}
+        distances = {start: 0}
         previous_nodes = {start: None}
 
         while queue:
-            current_f_cost, current_node = heapq.heappop(queue)
+            current_distance, current_node = heapq.heappop(queue)
 
             if current_node == goal:
                 break
 
             for neighbor, weight in self.graph.get(current_node, {}).items():
-                tentative_g_cost = g_costs[current_node] + weight
-                if tentative_g_cost < g_costs.get(neighbor, float('inf')):
-                    g_costs[neighbor] = tentative_g_cost
-                    f_costs[neighbor] = tentative_g_cost + heuristic(neighbor, goal)
+                distance = current_distance + weight
+                if distance < distances.get(neighbor, float('inf')):
+                    distances[neighbor] = distance
                     previous_nodes[neighbor] = current_node
-                    heapq.heappush(queue, (f_costs[neighbor], neighbor))
+                    heapq.heappush(queue, (distance, neighbor))
 
         path = []
         current_node = goal
@@ -110,6 +104,7 @@ class Explorer(AbstAgent):
             current_node = previous_nodes[current_node]
         path.reverse()
         return path
+
 
     def get_next_position(self):
         obstacles = self.check_walls_and_lim()
@@ -182,27 +177,10 @@ class Explorer(AbstAgent):
 
         return
 
-    # def come_back(self):
-    #     if not self.back_plan:
-    #         path = self.a_star((self.x, self.y), (0, 0))
-    #         self.back_plan = [(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]) for i in range(len(path) - 1)]
-
-    #     if self.back_plan:
-    #         dx, dy = self.back_plan.pop(0)
-    #         rtime_bef = self.get_rtime()
-    #         result = self.walk(dx, dy)
-    #         rtime_aft = self.get_rtime()
-
-    #         if result == VS.EXECUTED:
-    #             self.x += dx
-    #             self.y += dy
-    #             self.walk_time = self.walk_time + (rtime_bef - rtime_aft)
-
     def come_back(self):
         if not self.back_plan:
-            path = self.a_star((self.x, self.y), (0, 0))
+            path = self.dijkstra((self.x, self.y), (0, 0))
             self.back_plan = [(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]) for i in range(len(path) - 1)]
-            self.back_plan_cost = sum(self.graph[path[i]][path[i+1]] for i in range(len(path) - 1))
 
         if self.back_plan:
             dx, dy = self.back_plan.pop(0)
@@ -215,54 +193,25 @@ class Explorer(AbstAgent):
                 self.y += dy
                 self.walk_time = self.walk_time + (rtime_bef - rtime_aft)
 
-    # def deliberate(self) -> bool:
-    #     """ The agent chooses the next action. The simulator calls this
-    #     method at each cycle. Must be implemented in every agent"""
-
-    #     # forth and back: go, read the vital signals and come back to the position
-
-    #     time_tolerance = (2 * self.COST_DIAG * Explorer.MAX_DIFFICULTY + self.COST_READ) + 100
-
-    #     # keeps exploring while there is enough time
-    #     if self.walk_time < (self.get_rtime() - time_tolerance):
-    #         self.explore()
-    #         return True
-
-    #     # no more come back walk actions to execute or already at base
-    #     if self.walk_stack.is_empty() or (self.x == 0 and self.y == 0):
-    #         print("Cabo o tempo de exploracao")
-    #         self.resc.sync_explorers(self.map, self.victims)
-    #         return False
-
-    #     # proceed to the base
-    #     self.come_back()
-    #     return True
-
     def deliberate(self) -> bool:
         """ The agent chooses the next action. The simulator calls this
         method at each cycle. Must be implemented in every agent"""
 
+        # forth and back: go, read the vital signals and come back to the position
+
         time_tolerance = (2 * self.COST_DIAG * Explorer.MAX_DIFFICULTY + self.COST_READ) + 100
 
-        # Calculate the back path cost using A* algorithm
-        path = self.a_star((self.x, self.y), (0, 0))
-        self.back_plan_cost = sum(self.graph[path[i]][path[i+1]] for i in range(len(path) - 1))
-        print(f"Back path cost: {self.back_plan_cost}")
-
-        # Check if there is enough time to explore and come back
-        # if self.walk_time + time_tolerance < self.get_rtime():
-        if self.walk_time + self.back_plan_cost + time_tolerance < self.get_rtime():
+        # keeps exploring while there is enough time
+        if self.walk_time < (self.get_rtime() - time_tolerance):
             self.explore()
             return True
-        else:
-            print("Tempo esgotado")
 
-        # No more come back walk actions to execute or already at base
+        # no more come back walk actions to execute or already at base
         if self.walk_stack.is_empty() or (self.x == 0 and self.y == 0):
             print("Cabo o tempo de exploracao")
             self.resc.sync_explorers(self.map, self.victims)
             return False
 
-        # Proceed to the base
+        # proceed to the base
         self.come_back()
         return True

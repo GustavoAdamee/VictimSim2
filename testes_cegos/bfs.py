@@ -22,21 +22,34 @@ class BFS:
             7: (-1, -1)             # ul: Up left diagonal
         }
 
+        # map.draw()
+
     # Find possible actions of a given position (state)
     def get_possible_actions(self, pos):
         x, y = pos
         actions = []
+        # pos = (2,2)
+        # print(f"Pos: {pos}")
 
+        # print(self.map.get_difficulty((3,3)))
 
         if self.map.in_map(pos):
             incr = 0
             for key in self.incr:
                 possible_pos = self.map.get_actions_results(pos)
+                # if (pos == (2, 2)):
+                    # print(f"Possible pos: {possible_pos} for pos {pos}")
+                    # print("position (3,3) test", self.map.get_difficulty((8,13)))
+                    # print("possible pos (3,3) test", self.map.get_actions_results((3,3)))
+                # if (self.map.get_difficulty(pos) == 100):
+                #     print(f"Wall found at {pos}")
+                #     incr += 1
+                #     continue
                 if possible_pos[incr] == VS.CLEAR:
                     actions.append((self.incr[key][0], self.incr[key][1]))
 
                 incr += 1
-            
+        # print(f"Actions: {actions}")
         return actions
 
     # Verifies if pos (state) is already in the frontier
@@ -59,6 +72,8 @@ class BFS:
                          [], -1: no plan because the time limit was reached
                          [],  0: no path found between start and goal position
                          plan, time: a plan with the time required to execute (only walk actions)"""
+        print("Start BFS")
+        # print(f"Start: {start}, goal: {goal}")
         self.tlim = tlim
         selected = set()
         self.frontier = deque([(start, [], 0)]) # double ended queue (position, plan in delta x and delta y, accumulated time)
@@ -67,6 +82,7 @@ class BFS:
         
         while self.frontier:   # queue is not empty
             current_pos, plan, acc_cost = self.frontier.popleft()   # pop head of the queue
+
             selected.add(current_pos)
             possible_actions = self.get_possible_actions(current_pos)
      
@@ -85,6 +101,7 @@ class BFS:
                     
                     if child == goal:
                         if new_acc_cost > self.tlim:
+                            print("Time exceeded")
                             return [], -1    # time exceeded
                         
                         return new_plan, new_acc_cost
@@ -93,7 +110,8 @@ class BFS:
                 
 
         #QUICK FIX   
-        return [], 0  # No path found
+        print("No path found")
+        return None, 0  # No path found
 
 # Example usage: it is a script not used when importe by other module
 if __name__ == '__main__':
