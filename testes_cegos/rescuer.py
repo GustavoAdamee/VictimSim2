@@ -73,6 +73,7 @@ class Rescuer(AbstAgent):
                 vs = values[1]        # list of vital signals
                 writer.writerow([id, x, y, vs[6], vs[7]])
 
+
     def cluster_victims(self):
         """ this method does a naive clustering of victims per quadrant: victims in the
             upper left quadrant compose a cluster, victims in the upper right quadrant, another one, and so on.
@@ -81,48 +82,64 @@ class Rescuer(AbstAgent):
                       such as vic_id is the victim id, (x,y) is the victim's position, and [<vs>] the list of vital signals
                       including the severity value and the corresponding label"""
 
-
         # Find the upper and lower limits for x and y
         lower_xlim = sys.maxsize    
         lower_ylim = sys.maxsize
         upper_xlim = -sys.maxsize - 1
         upper_ylim = -sys.maxsize - 1
 
-        vic = self.victims
-    
         for key, values in self.victims.items():
             x, y = values[0]
             lower_xlim = min(lower_xlim, x) 
             upper_xlim = max(upper_xlim, x)
             lower_ylim = min(lower_ylim, y)
             upper_ylim = max(upper_ylim, y)
+
+        # K-means clustering
+        max_iter = 50
+        k = 4
+
+        # Initialize the centroids
+        centroids = []
+        for i in range(k):
+            x = random.uniform(lower_xlim, upper_xlim)
+            y = random.uniform(lower_ylim, upper_ylim)
+            centroids.append((x, y))
         
-        # Calculate midpoints
-        mid_x = lower_xlim + (upper_xlim - lower_xlim) / 2
-        mid_y = lower_ylim + (upper_ylim - lower_ylim) / 2
-        print(f"{self.NAME} ({lower_xlim}, {lower_ylim}) - ({upper_xlim}, {upper_ylim})")
-        print(f"{self.NAME} cluster mid_x, mid_y = {mid_x}, {mid_y}")
-    
-        # Divide dictionary into quadrants
-        upper_left = {}
-        upper_right = {}
-        lower_left = {}
-        lower_right = {}
-        
-        for key, values in self.victims.items():  # values are pairs: ((x,y), [<vital signals list>])
-            x, y = values[0]
-            if x <= mid_x:
-                if y <= mid_y:
-                    upper_left[key] = values
+        clusters = [{} for _ in range(k)]
+        centroid_changed = True
+        iteration = 0
+
+        while (iteration < max_iter) and (centroid_changed):
+            centroid_changed = False
+            clusters = [{} for _ in range(k)]  # Reset clusters
+
+            # Assign victims to the nearest centroid
+            for key, values in self.victims.items():
+                x, y = values[0]
+                distances = [math.sqrt((x - cx)**2 + (y - cy)**2) for cx, cy in centroids]
+                min_distance_index = distances.index(min(distances))
+                clusters[min_distance_index][key] = values
+
+            # Recalculate the centroids
+            new_centroids = []
+            for cluster in clusters:
+                if cluster:
+                    avg_x = sum(values[0][0] for values in cluster.values()) / len(cluster)
+                    avg_y = sum(values[0][1] for values in cluster.values()) / len(cluster)
+                    new_centroids.append((avg_x, avg_y))
                 else:
-                    lower_left[key] = values
-            else:
-                if y <= mid_y:
-                    upper_right[key] = values
-                else:
-                    lower_right[key] = values
-    
-        return [upper_left, upper_right, lower_left, lower_right]
+                    new_centroids.append((random.uniform(lower_xlim, upper_xlim), random.uniform(lower_ylim, upper_ylim)))
+
+            if new_centroids != centroids:
+                centroid_changed = True
+                centroids = new_centroids
+
+            iteration += 1
+
+        # print(clusters)
+        # sys.exit()
+        return clusters
 
     def predict_severity_and_class(self):
         """ @TODO to be replaced by a classifier and a regressor to calculate the class of severity and the severity values.
@@ -153,6 +170,7 @@ class Rescuer(AbstAgent):
 
         self.sequences = new_sequences
 
+    #TODO: change the BFS here to A* algorithm
     def planner(self):
         """ A method that calculates the path between victims: walk actions in a OFF-LINE MANNER (the agent plans, stores the plan, and
             after it executes. Eeach element of the plan is a pair dx, dy that defines the increments for the the x-axis and  y-axis."""
@@ -231,7 +249,9 @@ class Rescuer(AbstAgent):
 
             for i, cluster in enumerate(clusters_of_vic):
                 self.save_cluster_csv(cluster, i+1)    # file names start at 1
-  
+
+            # sys.exit()
+
             # Instantiate the other rescuers
             rescuers = [None] * 4
             rescuers[0] = self                    # the master rescuer is the index 0 agent
