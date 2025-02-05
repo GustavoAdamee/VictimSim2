@@ -30,8 +30,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 
-descriptor_file = 'exp_300v_90x90_descriptor.txt'
-results_file = 'exp_300v_90x90_results.txt'
+descriptor_file = 'exp_408v_90x90_descriptor.txt'
+results_file = 'exp_408v_90x90_results.txt'
 
 # Read the CSV file containing descriptors into a pandas DataFrame
 df_descriptor = pd.read_csv(descriptor_file, skipinitialspace=True)
