@@ -7,8 +7,6 @@ import random
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
 from map import Map
-from numpy.random import choice
-from dijkstra import Dijkstra
 import heapq
 
 class Stack:
