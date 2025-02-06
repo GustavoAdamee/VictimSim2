@@ -10,16 +10,18 @@ from map import Map
 from typing import List, Tuple, Dict, Any
 
 class AStar:
-    def __init__(self, base: Tuple[int, int] = (0, 0), map: Map = None, line_cost: float = 1.0, diag_cost: float = 1.5):
+    def __init__(self, base: Tuple[int, int] = (0, 0), map: Map = None):
+        self.normal_cost = 1.0
+        self.diagonal_cost = 1.5
         self._graph = Graph()
         self.base = base
         self._graph.add_node(base)
         self._directions: Dict[Tuple[Tuple[int, int], Tuple[int, int]], Tuple[int, int]] = {}
         self.map = map
         if self.map:
-            self.map_to_graph(self.map, line_cost, diag_cost)
+            self.map_to_graph(self.map)
 
-    def map_to_graph(self, map: Map, line_cost: float, diag_cost: float) -> None:
+    def map_to_graph(self, map: Map) -> None:
         for coord in map.data:
             self._graph.add_node(coord)
             diff, vic_id, actions_res = map.get(coord)
@@ -28,42 +30,42 @@ class AStar:
                 up = (x, y - 1)
                 if map.in_map(up):
                     neighbor_diff = map.get_difficulty(up)
-                    self.add_edge((x, y), up, line_cost * neighbor_diff, line_cost * diff)
+                    self.add_edge((x, y), up, self.normal_cost * neighbor_diff, self.normal_cost * diff)
             if actions_res[1] == VS.CLEAR:  # up right
                 up_right = (x + 1, y - 1)
                 if map.in_map(up_right):
                     neighbor_diff = map.get_difficulty(up_right)
-                    self.add_edge((x, y), up_right, diag_cost * neighbor_diff, diag_cost * diff)
+                    self.add_edge((x, y), up_right, self.diagonal_cost * neighbor_diff, self.diagonal_cost * diff)
             if actions_res[2] == VS.CLEAR:  # right
                 right = (x + 1, y)
                 if map.in_map(right):
                     neighbor_diff = map.get_difficulty(right)
-                    self.add_edge((x, y), right, line_cost * neighbor_diff, line_cost * diff)
+                    self.add_edge((x, y), right, self.normal_cost * neighbor_diff, self.normal_cost * diff)
             if actions_res[3] == VS.CLEAR:  # down right
                 down_right = (x + 1, y + 1)
                 if map.in_map(down_right):
                     neighbor_diff = map.get_difficulty(down_right)
-                    self.add_edge((x, y), down_right, diag_cost * neighbor_diff, diag_cost * diff)
+                    self.add_edge((x, y), down_right, self.diagonal_cost * neighbor_diff, self.diagonal_cost * diff)
             if actions_res[4] == VS.CLEAR:  # down
                 down = (x, y + 1)
                 if map.in_map(down):
                     neighbor_diff = map.get_difficulty(down)
-                    self.add_edge((x, y), down, line_cost * neighbor_diff, line_cost * diff)
+                    self.add_edge((x, y), down, self.normal_cost * neighbor_diff, self.normal_cost * diff)
             if actions_res[5] == VS.CLEAR:  # down left
                 down_left = (x - 1, y + 1)
                 if map.in_map(down_left):
                     neighbor_diff = map.get_difficulty(down_left)
-                    self.add_edge((x, y), down_left, diag_cost * neighbor_diff, diag_cost * diff)
+                    self.add_edge((x, y), down_left, self.diagonal_cost * neighbor_diff, self.diagonal_cost * diff)
             if actions_res[6] == VS.CLEAR:  # left
                 left = (x - 1, y)
                 if map.in_map(left):
                     neighbor_diff = map.get_difficulty(left)
-                    self.add_edge((x, y), left, line_cost * neighbor_diff, line_cost * diff)
+                    self.add_edge((x, y), left, self.normal_cost * neighbor_diff, self.normal_cost * diff)
             if actions_res[7] == VS.CLEAR:  # up left
                 up_left = (x - 1, y - 1)
                 if map.in_map(up_left):
                     neighbor_diff = map.get_difficulty(up_left)
-                    self.add_edge((x, y), up_left, diag_cost * neighbor_diff, diag_cost * diff)
+                    self.add_edge((x, y), up_left, self.diagonal_cost * neighbor_diff, self.diagonal_cost * diff)
 
     def add_edge(self, node1: Tuple[int, int], node2: Tuple[int, int], cost1_2: float, cost2_1: float) -> None:
         self._graph.add_edge(node1, node2, cost1_2)

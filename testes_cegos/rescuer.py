@@ -20,6 +20,7 @@ from vs.abstract_agent import AbstAgent
 from vs.physical_agent import PhysAgent
 from vs.constants import VS
 from bfs import BFS
+from a_star import AStar
 from abc import ABC, abstractmethod
 
 
@@ -177,7 +178,9 @@ class Rescuer(AbstAgent):
 
 
         # let's instantiate the breadth-first search
-        bfs = BFS(self.map, self.COST_LINE, self.COST_DIAG)
+        # bfs = BFS(self.map, self.COST_LINE, self.COST_DIAG)
+
+        a_astar = AStar((0,0),self.map)
 
         # for each victim of the first sequence of rescue for this agent, we're going go calculate a path
         # starting at the base - always at (0,0) in relative coords
@@ -190,13 +193,22 @@ class Rescuer(AbstAgent):
 
         sequence = self.sequences[0]
         start = (0,0) # always from starting at the base
+        
+        # add tolerance here
+        # ...
+
         for vic_id in sequence:
             goal = sequence[vic_id][0]
             # print(f"{self.NAME} Plan: from {start} to {goal}")
-            plan, time = bfs.search(start, goal, self.plan_rtime)
-            if plan:
-                self.plan = self.plan + plan
-                self.plan_rtime = self.plan_rtime - time
+            # plan, time = bfs.search(start, goal, self.plan_rtime)
+
+            # remaining time is not necessary here
+            plan_back, plan_back_cost = a_astar.calc_plan(goal, (0,0))
+
+            plan, time = a_astar.calc_plan(start, goal, self.plan_rtime)
+            if plan and time != -1:
+                self.plan += plan
+                self.plan_rtime -= time
                 start = goal
             else:
                 print(f"{self.NAME} Plan fail - no path between {start} and {goal}")
@@ -208,10 +220,11 @@ class Rescuer(AbstAgent):
         # Plan to come back to the base
         goal = (0,0)
         # print(f"{self.NAME} Plan to base: from {start} to {goal}")
-        plan, time = bfs.search(start, goal, self.plan_rtime)
+        # plan, time = bfs.search(start, goal, self.plan_rtime)
         # print(f"{self.NAME} Plan to base: {plan} time: {time}")
-        self.plan = self.plan + plan
-        self.plan_rtime = self.plan_rtime - time
+        plan_back, plan_back_cost = a_astar.calc_plan(start, goal, self.plan_rtime)
+        self.plan = self.plan + plan_back
+        self.plan_rtime = self.plan_rtime - plan_back_cost
         # if(self.NAME == "RESC_4"):
         #     print(f"{self.NAME} Plan: {self.plan}")
         #     print(f"{self.NAME} Plan time: {self.plan_rtime}")

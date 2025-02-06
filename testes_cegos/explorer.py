@@ -68,7 +68,7 @@ class Explorer(AbstAgent):
         self.is_coming_back = False
         self.back_plan = []        # the plan to come back to the base
         self.back_plan_cost = 0    # the cost of the plan to come back to the base
-        self.dijkstra = AStar((0,0))
+        self.a_start = AStar((0,0))
         self.movements = priorities_vector
 
     def get_next_position(self):
@@ -82,7 +82,7 @@ class Explorer(AbstAgent):
             if obstacles[movement] == VS.CLEAR and (self.x + dx, self.y + dy) not in self.visited:
                 return (dx, dy)
             
-            if obstacles[movement] == VS.CLEAR and (self.x + dx, self.y + dy) in self.visited and not self.dijkstra.check_edge((self.x, self.y), (self.x + dx, self.y + dy)):
+            if obstacles[movement] == VS.CLEAR and (self.x + dx, self.y + dy) in self.visited and not self.a_start.check_edge((self.x, self.y), (self.x + dx, self.y + dy)):
             # if obstacles[movement] == VS.CLEAR and (self.x + dx, self.y + dy) in self.visited:
                 cost_neighbor = self.map.get_difficulty((self.x + dx, self.y + dy))
                 if dx == 0 or dy == 0:
@@ -92,7 +92,7 @@ class Explorer(AbstAgent):
                     cost = cost * self.COST_DIAG
                     cost_neighbor = cost_neighbor * self.COST_DIAG
 
-                self.dijkstra.add_edge((self.x, self.y), (self.x + dx, self.y + dy), cost, cost_neighbor)
+                self.a_start.add_edge((self.x, self.y), (self.x + dx, self.y + dy), cost, cost_neighbor)
                 
         direction = random.randint(0, 7)
         return Explorer.AC_INCR[direction]
@@ -163,11 +163,11 @@ class Explorer(AbstAgent):
             difficulty = (rtime_bef - rtime_aft)
             if dx == 0 or dy == 0:
                 prev_diff = prev_diff * self.COST_LINE
-                self.dijkstra.add_edge((prev_x, prev_y), (self.x, self.y), difficulty, prev_diff)
+                self.a_start.add_edge((prev_x, prev_y), (self.x, self.y), difficulty, prev_diff)
                 difficulty = difficulty / self.COST_LINE
             else:
                 prev_diff = prev_diff * self.COST_DIAG
-                self.dijkstra.add_edge((prev_x, prev_y), (self.x, self.y), difficulty, prev_diff)
+                self.a_start.add_edge((prev_x, prev_y), (self.x, self.y), difficulty, prev_diff)
                 difficulty = difficulty / self.COST_DIAG
 
             # Update the map with the new cell
@@ -197,13 +197,13 @@ class Explorer(AbstAgent):
         if  self.back_plan_cost + time_tolerance < self.get_rtime():
             self.explore()
 
-            self.back_plan_cost = self.dijkstra.get_shortest_cost((self.x, self.y), (0,0))
+            self.back_plan_cost = self.a_start.get_shortest_cost((self.x, self.y), (0,0))
             
             return True
 
         if not self.is_coming_back:
             self.is_coming_back = True
-            self.back_plan, self.back_plan_cost = self.dijkstra.calc_backtrack((self.x, self.y))
+            self.back_plan, self.back_plan_cost = self.a_start.calc_backtrack((self.x, self.y))
             # updates walk_stack with the back_plan
             self.walk_stack = Stack()
             for action in self.back_plan[::-1]:
