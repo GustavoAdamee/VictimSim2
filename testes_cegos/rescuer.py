@@ -56,6 +56,7 @@ class Rescuer(AbstAgent):
         # It changes to ACTIVE when the map arrives
         self.set_state(VS.IDLE)
 
+
     def save_cluster_csv(self, cluster, cluster_id):
         filename = f"./clusters/cluster{cluster_id}.txt"
         with open(filename, 'w', newline='') as csvfile:
@@ -64,6 +65,7 @@ class Rescuer(AbstAgent):
                 x, y = values[0]      # x,y coordinates
                 vs = values[1]        # list of vital signals
                 writer.writerow([vic_id, x, y, vs[6], vs[7]])
+
 
     def save_sequence_csv(self, sequence, sequence_id):
         filename = f"./clusters/seq{sequence_id}.txt"
@@ -76,8 +78,7 @@ class Rescuer(AbstAgent):
 
 
     def cluster_victims(self):
-        """ this method does a naive clustering of victims per quadrant: victims in the
-            upper left quadrant compose a cluster, victims in the upper right quadrant, another one, and so on.
+        """ this method does a k-means clustering of victims.
             
             @returns: a list of clusters where each cluster is a dictionary in the format [vic_id]: ((x,y), [<vs>])
                       such as vic_id is the victim id, (x,y) is the victim's position, and [<vs>] the list of vital signals
@@ -97,7 +98,7 @@ class Rescuer(AbstAgent):
             upper_ylim = max(upper_ylim, y)
 
         # K-means clustering
-        max_iter = 50
+        max_iter = 150
         k = 4
 
         # Initialize the centroids
@@ -142,6 +143,7 @@ class Rescuer(AbstAgent):
         # sys.exit()
         return clusters
 
+
     def predict_severity_and_class(self):
         """ @TODO to be replaced by a classifier and a regressor to calculate the class of severity and the severity values.
             This method should add the vital signals(vs) of the self.victims dictionary with these two values.
@@ -171,15 +173,12 @@ class Rescuer(AbstAgent):
 
         self.sequences = new_sequences
 
-    #TODO: change the BFS here to A* algorithm
+
     def planner(self):
         """ A method that calculates the path between victims: walk actions in a OFF-LINE MANNER (the agent plans, stores the plan, and
             after it executes. Eeach element of the plan is a pair dx, dy that defines the increments for the the x-axis and  y-axis."""
 
-
-        # let's instantiate the breadth-first search
-        # bfs = BFS(self.map, self.COST_LINE, self.COST_DIAG)
-
+        # The planner uses the A* algorithm to calculate the path between victims
         a_astar = AStar((0,0),self.map)
 
         # for each victim of the first sequence of rescue for this agent, we're going go calculate a path
@@ -193,9 +192,6 @@ class Rescuer(AbstAgent):
 
         sequence = self.sequences[0]
         start = (0,0) # always from starting at the base
-        
-        # add tolerance here
-        # ...
 
         for vic_id in sequence:
             goal = sequence[vic_id][0]
@@ -204,8 +200,8 @@ class Rescuer(AbstAgent):
 
             # remaining time is not necessary here
             plan_back, plan_back_cost = a_astar.calc_plan(goal, (0,0))
-
-            plan, time = a_astar.calc_plan(start, goal, self.plan_rtime)
+            # calculate next move based on time available (-1 is used for aditional time)
+            plan, time = a_astar.calc_plan(start, goal, self.plan_rtime - plan_back_cost - 1)
             if plan and time != -1:
                 self.plan += plan
                 self.plan_rtime -= time
