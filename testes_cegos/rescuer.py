@@ -15,6 +15,7 @@ import random
 import math
 import csv
 import sys
+import logging
 from map import Map
 from vs.abstract_agent import AbstAgent
 from vs.physical_agent import PhysAgent
@@ -23,6 +24,8 @@ from bfs import BFS
 from a_star import AStar
 from abc import ABC, abstractmethod
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 ## Classe que define o Agente Rescuer com um plano fixo
 class Rescuer(AbstAgent):
@@ -50,7 +53,6 @@ class Rescuer(AbstAgent):
         self.y = 0                   # the current y position of the rescuer when executing the plan
         self.clusters = clusters     # the clusters of victims this agent should take care of - see the method cluster_victims
         self.sequences = clusters    # the sequence of visit of victims for each cluster 
-        
                 
         # Starts in IDLE state.
         # It changes to ACTIVE when the map arrives
@@ -84,18 +86,23 @@ class Rescuer(AbstAgent):
                       such as vic_id is the victim id, (x,y) is the victim's position, and [<vs>] the list of vital signals
                       including the severity value and the corresponding label"""
 
-        # Find the upper and lower limits for x and y
+        # Find the upper and lower limits for x, y, and gravity class
         lower_xlim = sys.maxsize    
         lower_ylim = sys.maxsize
+        lower_gclass = sys.maxsize
         upper_xlim = -sys.maxsize - 1
         upper_ylim = -sys.maxsize - 1
+        upper_gclass = -sys.maxsize - 1
 
         for key, values in self.victims.items():
             x, y = values[0]
+            gravity_class = values[1][7]
             lower_xlim = min(lower_xlim, x) 
             upper_xlim = max(upper_xlim, x)
             lower_ylim = min(lower_ylim, y)
             upper_ylim = max(upper_ylim, y)
+            lower_gclass = min(lower_gclass, gravity_class)
+            upper_gclass = max(upper_gclass, gravity_class)
 
         # K-means clustering
         max_iter = 150
@@ -106,7 +113,8 @@ class Rescuer(AbstAgent):
         for i in range(k):
             x = random.uniform(lower_xlim, upper_xlim)
             y = random.uniform(lower_ylim, upper_ylim)
-            centroids.append((x, y))
+            gravity_class = random.uniform(lower_gclass, upper_gclass)
+            centroids.append((x, y, gravity_class))
         
         clusters = [{} for _ in range(k)]
         centroid_changed = True
@@ -119,7 +127,8 @@ class Rescuer(AbstAgent):
             # Assign victims to the nearest centroid
             for key, values in self.victims.items():
                 x, y = values[0]
-                distances = [math.sqrt((x - cx)**2 + (y - cy)**2) for cx, cy in centroids]
+                gravity_class = values[1][7]
+                distances = [math.sqrt((x - cx)**2 + (y - cy)**2 + (gravity_class - cg)**2) for cx, cy, cg in centroids]
                 min_distance_index = distances.index(min(distances))
                 clusters[min_distance_index][key] = values
 
@@ -129,9 +138,14 @@ class Rescuer(AbstAgent):
                 if cluster:
                     avg_x = sum(values[0][0] for values in cluster.values()) / len(cluster)
                     avg_y = sum(values[0][1] for values in cluster.values()) / len(cluster)
-                    new_centroids.append((avg_x, avg_y))
+                    avg_gravity_class = sum(values[1][7] for values in cluster.values()) / len(cluster)
+                    new_centroids.append((avg_x, avg_y, avg_gravity_class))
                 else:
-                    new_centroids.append((random.uniform(lower_xlim, upper_xlim), random.uniform(lower_ylim, upper_ylim)))
+                    new_centroids.append((
+                        random.uniform(lower_xlim, upper_xlim),
+                        random.uniform(lower_ylim, upper_ylim),
+                        random.uniform(lower_gclass, upper_gclass)
+                    ))
 
             if new_centroids != centroids:
                 centroid_changed = True
@@ -156,20 +170,139 @@ class Rescuer(AbstAgent):
             values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
 
 
-    def sequencing(self):
-        """ Currently, this method sort the victims by the x coordinate followed by the y coordinate
-            @TODO It must be replaced by a Genetic Algorithm that finds the possibly best visiting order """
+    def create_population(self, sequence, pop_size):
+        logging.debug("Creating initial population")
+        population = []
 
-        """ We consider an agent may have different sequences of rescue. The idea is the rescuer can execute
-            sequence[0], sequence[1], ...
-            A sequence is a dictionary with the following structure: [vic_id]: ((x,y), [<vs>]"""
+        # Create a few individuals using a greedy approach
+        for _ in range(pop_size // 2):
+            individual = self.greedy_individual(sequence)
+            population.append(individual)
+
+        # Create the rest of the population using random shuffling
+        for _ in range(pop_size - len(population)):
+            individual = list(sequence.items())
+            random.shuffle(individual)
+            population.append(dict(individual))
+
+        logging.debug(f"Initial population created: {population}")
+        return population
+
+    def greedy_individual(self, sequence):
+        """Create an individual using a greedy approach with some randomness."""
+        unvisited = list(sequence.items())
+        current_position = (0, 0)
+        individual = {}
+
+        while unvisited:
+            # Find the nearest unvisited victims
+            distances = [(item, self.a_star.get_shortest_cost(current_position, item[1][0])) for item in unvisited]
+            distances.sort(key=lambda x: x[1])
+
+            # Introduce randomness: select one of the nearest victims
+            nearest_victims = distances[:3]  # Consider the 3 nearest victims
+            selected_victim = random.choice(nearest_victims)
+            
+            individual[selected_victim[0][0]] = selected_victim[0][1]
+            current_position = selected_victim[0][1][0]
+            unvisited.remove(selected_victim[0])
+
+        return individual
+
+
+    def calculate_score(self, individual):
+        # logging.debug(f"Calculating score for individual: {individual}")
+        # Initialize A* algorithm
+        a_astar = AStar((0, 0), self.map)
+        
+        total_time = 0
+        total_gravity = 0
+        total_class_priority = 0
+        time_limit = self.TLIM - 100  # TLIM minus a buffer value of 100
+
+        keys = list(individual.keys())
+        start = (0, 0)  # Start from the base
+
+        for i in range(len(keys)):
+            vic_id = keys[i]
+            goal = individual[vic_id][0]
+            # print("start", start)
+            # print("goal", goal)
+            vs = individual[vic_id][1]
+            gravity = vs[6]
+            class_priority = 5 - vs[7]  # Convert class to priority (1 -> 4, 2 -> 3, 3 -> 2, 4 -> 1)
+
+            # Get the shortest cost using A*
+            cost = a_astar.get_shortest_cost(start, goal)
+            if cost == -1:
+                # logging.debug(f"Invalid path for individual: {individual}")
+                return float('inf')  # Invalid path, return a high score
+            cost += self.COST_FIRST_AID
+            total_time += cost
+            total_gravity += gravity
+            total_class_priority += class_priority
+
+            # Check if the total time exceeds the time limit
+            if total_time > time_limit:
+                # logging.debug(f"Individual exceeds time limit: {individual}")
+                return float('inf')  # Exceeds time limit, return a high score
+
+            start = goal
+
+        # Calculate the final score based on gravity and class priority
+        score = (total_gravity * 0.7) + (total_class_priority * 0.3)
+        logging.debug(f"Score for individual: {score}")
+        return score
+
+    def select_bests(self, scores, population):
+        logging.debug("Selecting best individuals")
+        # Sort the population based on the scores in ascending order
+        sorted_population = [x for _, x in sorted(zip(scores, population), key=lambda pair: pair[0])]
+        # Select the top half of the sorted population
+        selected_population = sorted_population[:len(population) // 2]
+        # logging.debug(f"Selected best individuals: {selected_population}")
+        return selected_population
+
+    def reproduce(self, selecteds):
+        logging.debug("Reproducing new generation")
+        children = []
+        num_selected = len(selecteds)
+        for i in range(num_selected):
+            parent1 = list(selecteds[i].items())
+            parent2 = list(selecteds[(i + 1) % num_selected].items())  # Pair with the next, wrap around if odd
+            split = len(parent1) // 2
+            child = dict(parent1[:split] + parent2[split:])
+            children.append(child)
+        # logging.debug(f"Children produced: {children}")
+        return children
+
+    def select_the_best(self, population):
+        logging.debug("Selecting the best individual from the population")
+        best = min(population, key=self.calculate_score)
+        logging.debug(f"Best individual selected: {best}")
+        return best
+
+    def sequencing(self):
+        """ This method uses a Genetic Algorithm to find the possibly best visiting order """
+
+        pop_size = 6  # Population size
+        gen_size = 8  # Number of generations
 
         new_sequences = []
 
-        for seq in self.sequences:   # a list of sequences, being each sequence a dictionary
-            seq = dict(sorted(seq.items(), key=lambda item: item[1]))
-            new_sequences.append(seq)       
-            #print(f"{self.NAME} sequence of visit:\n{seq}\n")
+        for seq in self.sequences:  # Process each sequence separately
+            # logging.info(f"Processing sequence: {seq}")
+            population = self.create_population(seq, pop_size)  # Step 1: Generate initial population
+
+            for gen in range(gen_size):  # Step 2: Run genetic evolution
+                logging.info(f"Generation {gen}")
+                scores = [self.calculate_score(individual) for individual in population]  # Step 3: Evaluate fitness
+                selecteds = self.select_bests(scores, population)  # Step 4: Selection
+                children = self.reproduce(selecteds)  # Step 5: Crossover + Mutation
+                population = selecteds + children  # Step 6: New population
+
+            best = self.select_the_best(population)  # Step 7: Best solution found
+            new_sequences.append(best)  # Save the optimized sequence
 
         self.sequences = new_sequences
 
@@ -204,7 +337,7 @@ class Rescuer(AbstAgent):
             plan, time = a_astar.calc_plan(start, goal, self.plan_rtime - plan_back_cost - 1)
             if plan and time != -1:
                 self.plan += plan
-                self.plan_rtime -= time
+                self.plan_rtime -= time - 1
                 start = goal
             else:
                 print(f"{self.NAME} Plan fail - no path between {start} and {goal}")
