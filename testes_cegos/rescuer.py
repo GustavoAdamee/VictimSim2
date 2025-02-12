@@ -9,7 +9,7 @@
 ###
 ### One of the rescuers is the master in charge of unifying the maps and the information
 ### about the found victims.
-
+import joblib
 import os
 import random
 import math
@@ -40,7 +40,6 @@ class Rescuer(AbstAgent):
         super().__init__(env, config_file)
 
         # Specific initialization for the rescuer
-        self.model =  load_model('')
         self.nb_of_explorers = nb_of_explorers       # number of explorer agents to wait for start
         self.received_maps = 0                       # counts the number of explorers' maps
         self.map = Map()                             # explorer will pass the map
@@ -165,8 +164,8 @@ class Rescuer(AbstAgent):
             This method should add the vital signals(vs) of the self.victims dictionary with these two values.
 
             This implementation assigns random values to both, severity value and class"""
-        classificador = load_model('/home/joao/Projetos/SistemasInteligentes/VictimSim2/models/modelo_rede_neural.h5')
-        regressor = 
+        classificador = load_model('/home/rudi/Documentos/UTFPR/SI/VictimSim2adame/models/modelo_rede_neural.h5')
+        regressor = joblib.load('/home/rudi/Documentos/UTFPR/SI/VictimSim2adame/models/modelo_arvore_regressor.pkl')
         for vic_id, values in self.victims.items():
             x, y = values[0]
             vs = values[1]
