@@ -16,6 +16,7 @@ import math
 import csv
 import sys
 import logging
+import concurrent.futures
 from map import Map
 from vs.abstract_agent import AbstAgent
 from vs.physical_agent import PhysAgent
@@ -53,7 +54,10 @@ class Rescuer(AbstAgent):
         self.y = 0                   # the current y position of the rescuer when executing the plan
         self.clusters = clusters     # the clusters of victims this agent should take care of - see the method cluster_victims
         self.sequences = clusters    # the sequence of visit of victims for each cluster 
-                
+        
+        # A* algorithm to calculate the path between victims
+        self.a_star = AStar((0, 0), self.map)
+
         # Starts in IDLE state.
         # It changes to ACTIVE when the map arrives
         self.set_state(VS.IDLE)
@@ -175,12 +179,16 @@ class Rescuer(AbstAgent):
         population = []
 
         # Create a few individuals using a greedy approach
-        for _ in range(pop_size // 2):
-            individual = self.greedy_individual(sequence)
-            population.append(individual)
+        # for _ in range(pop_size // 2):
+        #     individual = self.greedy_individual(sequence)
+        #     population.append(individual)
 
-        # Create the rest of the population using random shuffling
-        for _ in range(pop_size - len(population)):
+        # # Create the rest of the population using random shuffling
+        # for _ in range(pop_size - len(population)):
+        #     individual = list(sequence.items())
+        #     random.shuffle(individual)
+        #     population.append(dict(individual))
+        for _ in range(pop_size):
             individual = list(sequence.items())
             random.shuffle(individual)
             population.append(dict(individual))
@@ -188,15 +196,17 @@ class Rescuer(AbstAgent):
         logging.debug(f"Initial population created: {population}")
         return population
 
+
     def greedy_individual(self, sequence):
         """Create an individual using a greedy approach with some randomness."""
         unvisited = list(sequence.items())
         current_position = (0, 0)
         individual = {}
+        a_star = AStar((0, 0), self.map)
 
         while unvisited:
             # Find the nearest unvisited victims
-            distances = [(item, self.a_star.get_shortest_cost(current_position, item[1][0])) for item in unvisited]
+            distances = [(item, a_star.get_shortest_cost(current_position, item[1][0])) for item in unvisited]
             distances.sort(key=lambda x: x[1])
 
             # Introduce randomness: select one of the nearest victims
@@ -218,6 +228,7 @@ class Rescuer(AbstAgent):
         total_time = 0
         total_gravity = 0
         total_class_priority = 0
+        walking_time = 0
         time_limit = self.TLIM - 100  # TLIM minus a buffer value of 100
 
         keys = list(individual.keys())
@@ -241,18 +252,23 @@ class Rescuer(AbstAgent):
             total_time += cost
             total_gravity += gravity
             total_class_priority += class_priority
-
-            # Check if the total time exceeds the time limit
-            if total_time > time_limit:
-                # logging.debug(f"Individual exceeds time limit: {individual}")
-                return float('inf')  # Exceeds time limit, return a high score
+            walking_time += cost
 
             start = goal
 
-        # Calculate the final score based on gravity and class priority
-        score = (total_gravity * 0.7) + (total_class_priority * 0.3)
+        # Penalize individuals that exceed the time limit
+        # if total_time > time_limit:
+        #     penalty = (total_time - time_limit) * 0.5
+        # else:
+        #     penalty = 0
+
+        # Calculate the final score based on gravity, class priority, walking time, and penalty
+        # score = (total_gravity * 0.6) + (total_class_priority * 0.3) - (walking_time * 0.2) - penalty
+        score = (total_gravity * 0.6) + (total_class_priority * 0.3) - (walking_time * 0.5)
         logging.debug(f"Score for individual: {score}")
+        logging.debug(f"Time for individual: {total_time}")
         return score
+
 
     def select_bests(self, scores, population):
         logging.debug("Selecting best individuals")
@@ -263,30 +279,43 @@ class Rescuer(AbstAgent):
         # logging.debug(f"Selected best individuals: {selected_population}")
         return selected_population
 
+
     def reproduce(self, selecteds):
         logging.debug("Reproducing new generation")
         children = []
         num_selected = len(selecteds)
+        mutation_rate = 0.1  # Mutation rate
+
         for i in range(num_selected):
             parent1 = list(selecteds[i].items())
             parent2 = list(selecteds[(i + 1) % num_selected].items())  # Pair with the next, wrap around if odd
             split = len(parent1) // 2
             child = dict(parent1[:split] + parent2[split:])
+
+            # Apply mutation
+            if random.random() < mutation_rate:
+                keys = list(child.keys())
+                idx1, idx2 = random.sample(range(len(keys)), 2)
+                keys[idx1], keys[idx2] = keys[idx2], keys[idx1]
+                child = {key: child[key] for key in keys}
+
             children.append(child)
         # logging.debug(f"Children produced: {children}")
         return children
 
+
     def select_the_best(self, population):
         logging.debug("Selecting the best individual from the population")
         best = min(population, key=self.calculate_score)
-        logging.debug(f"Best individual selected: {best}")
+        # logging.debug(f"Best individual selected: {best}")
         return best
+
 
     def sequencing(self):
         """ This method uses a Genetic Algorithm to find the possibly best visiting order """
 
-        pop_size = 6  # Population size
-        gen_size = 8  # Number of generations
+        pop_size = 10  # Reduced Population size
+        gen_size = 7  # Reduced Number of generations
 
         new_sequences = []
 
@@ -296,7 +325,8 @@ class Rescuer(AbstAgent):
 
             for gen in range(gen_size):  # Step 2: Run genetic evolution
                 logging.info(f"Generation {gen}")
-                scores = [self.calculate_score(individual) for individual in population]  # Step 3: Evaluate fitness
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    scores = list(executor.map(self.calculate_score, population))  # Step 3: Evaluate fitness
                 selecteds = self.select_bests(scores, population)  # Step 4: Selection
                 children = self.reproduce(selecteds)  # Step 5: Crossover + Mutation
                 population = selecteds + children  # Step 6: New population
@@ -335,30 +365,27 @@ class Rescuer(AbstAgent):
             plan_back, plan_back_cost = a_astar.calc_plan(goal, (0,0))
             # calculate next move based on time available (-1 is used for aditional time)
             plan, time = a_astar.calc_plan(start, goal, self.plan_rtime - plan_back_cost - 1)
-            if plan and time != -1:
-                self.plan += plan
-                self.plan_rtime -= time - 1
-                start = goal
-            else:
+            # if plan and time != -1:
+            #     self.plan += plan
+            #     self.plan_rtime = self.plan_rtime - time - 1
+            #     print("Remaining time for the rescuer: ", self.plan_rtime)
+            #     start = goal
+            # else:
+            #     print(f"{self.NAME} Plan fail - no path between {start} and {goal}")
+            #     break
+            if time == -1:
                 print(f"{self.NAME} Plan fail - no path between {start} and {goal}")
                 break
-            # self.plan = self.plan + plan
-            # self.plan_rtime = self.plan_rtime - time
-            # start = goal
+            self.plan += plan
+            self.plan_rtime = self.plan_rtime - time - 1
+            print("Remaining time for the rescuer: ", self.plan_rtime)
+            start = goal
 
         # Plan to come back to the base
         goal = (0,0)
-        # print(f"{self.NAME} Plan to base: from {start} to {goal}")
-        # plan, time = bfs.search(start, goal, self.plan_rtime)
-        # print(f"{self.NAME} Plan to base: {plan} time: {time}")
         plan_back, plan_back_cost = a_astar.calc_plan(start, goal, self.plan_rtime)
         self.plan = self.plan + plan_back
         self.plan_rtime = self.plan_rtime - plan_back_cost
-        # if(self.NAME == "RESC_4"):
-        #     print(f"{self.NAME} Plan: {self.plan}")
-        #     print(f"{self.NAME} Plan time: {self.plan_rtime}")
-        # print(f"{self.NAME} Plan: {self.plan}")
-        # print(f"{self.NAME} Plan time: {self.plan_rtime}")
            
 
     def sync_explorers(self, explorer_map, victims):
@@ -382,17 +409,15 @@ class Rescuer(AbstAgent):
             #self.map.draw()
             #print(f"{self.NAME} found victims by all explorers:\n{self.victims}")
 
-            #@TODO predict the severity and the class of victims' using a classifier
+            #TODO: predict the severity and the class of victims' using a classifier
             self.predict_severity_and_class()
 
-            #@TODO cluster the victims possibly using the severity and other criteria
+            #cluster the victims possibly using the severity and other criteria
             # Here, there 4 clusters
             clusters_of_vic = self.cluster_victims()
 
             for i, cluster in enumerate(clusters_of_vic):
                 self.save_cluster_csv(cluster, i+1)    # file names start at 1
-
-            # sys.exit()
 
             # Instantiate the other rescuers
             rescuers = [None] * 4
