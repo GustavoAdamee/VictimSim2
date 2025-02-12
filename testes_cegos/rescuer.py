@@ -23,6 +23,7 @@ from vs.constants import VS
 from bfs import BFS
 from a_star import AStar
 from abc import ABC, abstractmethod
+from keras.models import load_model
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -39,6 +40,7 @@ class Rescuer(AbstAgent):
         super().__init__(env, config_file)
 
         # Specific initialization for the rescuer
+        self.model =  load_model('')
         self.nb_of_explorers = nb_of_explorers       # number of explorer agents to wait for start
         self.received_maps = 0                       # counts the number of explorers' maps
         self.map = Map()                             # explorer will pass the map
@@ -163,12 +165,17 @@ class Rescuer(AbstAgent):
             This method should add the vital signals(vs) of the self.victims dictionary with these two values.
 
             This implementation assigns random values to both, severity value and class"""
-
+        classificador = load_model('/home/joao/Projetos/SistemasInteligentes/VictimSim2/models/modelo_rede_neural.h5')
+        regressor = 
         for vic_id, values in self.victims.items():
-            severity_value = random.uniform(0.1, 99.9)          # to be replaced by a regressor 
-            severity_class = random.randint(1, 4)               # to be replaced by a classifier
-            values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
-
+            x, y = values[0]
+            vs = values[1]
+            #print(vs)
+            vs_scaled = classificador.transform([vs[3:6]])
+            predict = float(regressor.predict(vs_scaled)[0])
+            values[1].pop(-1)
+            values[1].extend([predict, 0])  # predict the severity value
+            
 
     def create_population(self, sequence, pop_size):
         logging.debug("Creating initial population")
