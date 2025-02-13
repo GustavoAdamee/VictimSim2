@@ -24,7 +24,7 @@ from vs.constants import VS
 from bfs import BFS
 from a_star import AStar
 from abc import ABC, abstractmethod
-from keras.models import load_model
+# from keras.models import load_model
 import numpy  as np
 import joblib
 import pandas as pd
@@ -289,7 +289,7 @@ class Rescuer(AbstAgent):
             start = goal
 
         # Calculate the final score based on gravity, class priority, and walking time
-        score = (total_gravity * 500) + (total_class_priority * 500) - (walking_time * 5)
+        score = (total_gravity * 10) + (total_class_priority * 10) - (walking_time * 5)
         logging.debug(f"Score for individual: {score}")
         logging.debug(f"Time for individual: {total_time}")
         return score
