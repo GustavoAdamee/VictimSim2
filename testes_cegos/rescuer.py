@@ -168,11 +168,15 @@ class Rescuer(AbstAgent):
 
     def predict_severity_and_class(self):
         """ @TODO to be replaced by a classifier and a regressor to calculate the class of severity and the severity values.
-            This method should add the vital signals(vs) of the self.victims dictionary with these two values."""
+            This method should add the vital signals(vs) of the self.victims dictionary with these two values.
 
-        # if os.path.exists('../models/model_random_forest.pkl'):
-        model = joblib.load('../models/modelo_random_forest.pkl')
+            This implementation assigns random values to both, severity value and class"""
+    
+        if os.path.exists('../models/model.pkl'):
+                model = joblib.load('../models/model.pkl')
 
+        
+        regressor = joblib.load('../models/modelo_arvore_regressor.pkl')
         for vic_id, values in self.victims.items():
             qPA = values[1][3]
             pulso = values[1][4]
@@ -184,16 +188,19 @@ class Rescuer(AbstAgent):
                 'freqResp': freqResp
             }])
 
-            try:
-                y_pred = model.predict(victim_data.to_numpy())  # Uma classe, ex: [2]
-            except AttributeError as e:
-                logging.error(f"Model prediction error: {e}")
-                y_pred = [random.randint(1, 4)]  # Fallback to a random class
-
-            severity_value = random.uniform(0.1, 99.9)  # to be replaced by a regressor
+            # try:
+            y_pred = model.predict(victim_data.to_numpy())  # Uma classe, ex: [2]
+            # severity_value =  random.uniform(0.1, 99.9)          # to be replaced by a regressor 
+            severity_value = regressor.predict(victim_data.to_numpy())[0]
             severity_class = int(y_pred[0])
             values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
 
+
+
+
+                
+            
+            
 
     def create_population(self, sequence, pop_size):
         logging.debug("Creating initial population")
