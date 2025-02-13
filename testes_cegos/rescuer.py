@@ -176,7 +176,7 @@ class Rescuer(AbstAgent):
                 model = joblib.load('../models/model.pkl')
 
         
-        #regressor = 
+        regressor = joblib.load('../models/modelo_arvore_regressor.pkl')
         for vic_id, values in self.victims.items():
 
             
@@ -191,7 +191,8 @@ class Rescuer(AbstAgent):
                 }]) 
 
                 y_pred = model.predict(victim_data.to_numpy())  # Uma classe, ex: [2]
-                severity_value = random.uniform(0.1, 99.9)          # to be replaced by a regressor 
+                # severity_value =  random.uniform(0.1, 99.9)          # to be replaced by a regressor 
+                severity_value = regressor.predict(victim_data.to_numpy())[0]
                 severity_class = int(y_pred[0])
                 values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
 
