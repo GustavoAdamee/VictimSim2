@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error,classification_report
 from sklearn.tree import DecisionTreeRegressor
-
+import math
 
 
 
@@ -25,7 +25,7 @@ X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.
 # Construção do modelo de árvore de regressão
 # três diferentes configurações,
 max_depth = [29,50,100,200,400,0]
-min_simples_leaf = [10,5,1]
+min_simples_leaf = [50,25,5]
 
 the_best_config = 0
 the_best_mse = 100
@@ -56,20 +56,22 @@ for i in range(6):  # range(3) gera números de 0 a 2
 
         
 
+        
+        
+
+        print(f"\nValidação (com 4.000 vítimas): max_depth,min_simples_leaf = {max_depth[i]}, {min_simples_leaf[j]}")
+        print(f"RMSE: {math.sqrt(mse_val)}, MAE: {mae_val}")
+        # print(classification_report(y_val_labels, val_predictions))
+
+        print("\nTeste (com 800 vítimas):")
+        print(f"RMSE: {math.sqrt(mse_test)}, MAE: {mae_test}")
+        # print(classification_report(y_test_labels, test_predictions))
+
+        # Salvamento do modelo (opcional)
+        # Salva a melhor configuração
         if mse_test < the_best_mse:
             the_best_mse = mse_test
             the_best_config = i
-
-            print(f"\nValidação (com 4.000 vítimas): max_depth,min_simples_leaf = {max_depth[i]}, {min_simples_leaf[j]}")
-            print(f"MSE: {mse_val}, MAE: {mae_val}")
-            # print(classification_report(y_val_labels, val_predictions))
-
-            print("\nTeste (com 800 vítimas):")
-            print(f"MSE: {mse_test}, MAE: {mae_test}")
-            # print(classification_report(y_test_labels, test_predictions))
-
-            # Salvamento do modelo (opcional)
-            # Salva a melhor configuração
             import joblib
             joblib.dump(model, 'modelo_arvore_regressor.pkl')
             print("Modelo salvo com sucesso!")
