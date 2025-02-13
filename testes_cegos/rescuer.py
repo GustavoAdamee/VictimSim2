@@ -168,55 +168,44 @@ class Rescuer(AbstAgent):
 
     def predict_severity_and_class(self):
         """ @TODO to be replaced by a classifier and a regressor to calculate the class of severity and the severity values.
-            This method should add the vital signals(vs) of the self.victims dictionary with these two values.
+            This method should add the vital signals(vs) of the self.victims dictionary with these two values."""
 
-            This implementation assigns random values to both, severity value and class"""
-    
-        if os.path.exists('../models/model.pkl'):
-                model = joblib.load('../models/model.pkl')
+        # if os.path.exists('../models/model_random_forest.pkl'):
+        model = joblib.load('../models/modelo_random_forest.pkl')
 
-        
-        #regressor = 
         for vic_id, values in self.victims.items():
+            qPA = values[1][3]
+            pulso = values[1][4]
+            freqResp = values[1][5]
 
-            
-                qPA = values[1][3]
-                pulso = values[1][4]
-                freqResp = values[1][5]
+            victim_data = pd.DataFrame([{
+                'qPA': qPA,
+                'pulso': pulso,
+                'freqResp': freqResp
+            }])
 
-                victim_data = pd.DataFrame([{
-                    'qPA': qPA,
-                    'pulso': pulso,
-                    'freqResp': freqResp
-                }]) 
-
+            try:
                 y_pred = model.predict(victim_data.to_numpy())  # Uma classe, ex: [2]
-                severity_value = random.uniform(0.1, 99.9)          # to be replaced by a regressor 
-                severity_class = int(y_pred[0])
-                values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
+            except AttributeError as e:
+                logging.error(f"Model prediction error: {e}")
+                y_pred = [random.randint(1, 4)]  # Fallback to a random class
 
+            severity_value = random.uniform(0.1, 99.9)  # to be replaced by a regressor
+            severity_class = int(y_pred[0])
+            values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
 
-
-
-                
-            
-            
 
     def create_population(self, sequence, pop_size):
         logging.debug("Creating initial population")
         population = []
 
-        # Create a few individuals using a greedy approach
-        # for _ in range(pop_size // 2):
-        #     individual = self.greedy_individual(sequence)
-        #     population.append(individual)
+        # Create a few individuals ordered by x and y coordinates
+        sorted_sequence = dict(sorted(sequence.items(), key=lambda item: (item[1][0][0], item[1][0][1])))
+        for _ in range(pop_size // 2):
+            population.append(sorted_sequence)
 
-        # # Create the rest of the population using random shuffling
-        # for _ in range(pop_size - len(population)):
-        #     individual = list(sequence.items())
-        #     random.shuffle(individual)
-        #     population.append(dict(individual))
-        for _ in range(pop_size):
+        # Create the rest of the population using random shuffling
+        for _ in range(pop_size - len(population)):
             individual = list(sequence.items())
             random.shuffle(individual)
             population.append(dict(individual))
@@ -271,6 +260,9 @@ class Rescuer(AbstAgent):
             gravity = vs[6]
             class_priority = 5 - vs[7]  # Convert class to priority (1 -> 4, 2 -> 3, 3 -> 2, 4 -> 1)
 
+            # Normalize gravity to a scale of 0 to 4
+            normalized_gravity = (gravity / 100) * 4
+
             # Get the shortest cost using A*
             cost = a_astar.get_shortest_cost(start, goal)
             if cost == -1:
@@ -278,21 +270,19 @@ class Rescuer(AbstAgent):
                 return float('inf')  # Invalid path, return a high score
             cost += self.COST_FIRST_AID
             total_time += cost
-            total_gravity += gravity
+            total_gravity += normalized_gravity
             total_class_priority += class_priority
             walking_time += cost
 
+            # Penalize high-priority victims appearing later in the sequence
+            position_weight = (len(keys) - i) / len(keys)
+            total_gravity += normalized_gravity * position_weight
+            total_class_priority += class_priority * position_weight
+
             start = goal
 
-        # Penalize individuals that exceed the time limit
-        # if total_time > time_limit:
-        #     penalty = (total_time - time_limit) * 0.5
-        # else:
-        #     penalty = 0
-
-        # Calculate the final score based on gravity, class priority, walking time, and penalty
-        # score = (total_gravity * 0.6) + (total_class_priority * 0.3) - (walking_time * 0.2) - penalty
-        score = (total_gravity * 0.6) + (total_class_priority * 0.3) - (walking_time * 0.5)
+        # Calculate the final score based on gravity, class priority, and walking time
+        score = (total_gravity * 500) + (total_class_priority * 500) - (walking_time * 5)
         logging.debug(f"Score for individual: {score}")
         logging.debug(f"Time for individual: {total_time}")
         return score
@@ -312,15 +302,22 @@ class Rescuer(AbstAgent):
         logging.debug("Reproducing new generation")
         children = []
         num_selected = len(selecteds)
-        mutation_rate = 0.1  # Mutation rate
+        mutation_rate = 0.2  # Increased Mutation rate
 
         for i in range(num_selected):
             parent1 = list(selecteds[i].items())
             parent2 = list(selecteds[(i + 1) % num_selected].items())  # Pair with the next, wrap around if odd
-            split = len(parent1) // 2
-            child = dict(parent1[:split] + parent2[split:])
 
-            # Apply mutation
+            # Order Crossover (OX)
+            start, end = sorted(random.sample(range(len(parent1)), 2))
+            child = [None] * len(parent1)
+            child[start:end] = parent1[start:end]
+
+            parent2_items = [item for item in parent2 if item not in child]
+            child = [item if item is not None else parent2_items.pop(0) for item in child]
+            child = dict(child)
+
+            # Apply mutation (Swap Mutation)
             if random.random() < mutation_rate:
                 keys = list(child.keys())
                 idx1, idx2 = random.sample(range(len(keys)), 2)
@@ -328,7 +325,6 @@ class Rescuer(AbstAgent):
                 child = {key: child[key] for key in keys}
 
             children.append(child)
-        # logging.debug(f"Children produced: {children}")
         return children
 
 
@@ -414,6 +410,8 @@ class Rescuer(AbstAgent):
         plan_back, plan_back_cost = a_astar.calc_plan(start, goal, self.plan_rtime)
         self.plan = self.plan + plan_back
         self.plan_rtime = self.plan_rtime - plan_back_cost
+        print("Remaining time for the rescuer: ", self.plan_rtime)
+        print("Time to get back to the base: ", plan_back_cost)
            
 
     def sync_explorers(self, explorer_map, victims):
@@ -468,7 +466,7 @@ class Rescuer(AbstAgent):
             # In this case, each agent has just one cluster and one sequence
             self.sequences = self.clusters         
 
-            print("Victims--->", self.victims)
+            # print("Victims--->", self.victims)
 
             # For each rescuer, we calculate the rescue sequence 
             for i, rescuer in enumerate(rescuers):
