@@ -24,6 +24,9 @@ from bfs import BFS
 from a_star import AStar
 from abc import ABC, abstractmethod
 from keras.models import load_model
+import numpy  as np
+import joblib
+import pandas as pd
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -40,7 +43,6 @@ class Rescuer(AbstAgent):
         super().__init__(env, config_file)
 
         # Specific initialization for the rescuer
-        self.model =  load_model('')
         self.nb_of_explorers = nb_of_explorers       # number of explorer agents to wait for start
         self.received_maps = 0                       # counts the number of explorers' maps
         self.map = Map()                             # explorer will pass the map
@@ -165,16 +167,35 @@ class Rescuer(AbstAgent):
             This method should add the vital signals(vs) of the self.victims dictionary with these two values.
 
             This implementation assigns random values to both, severity value and class"""
-        classificador = load_model('/home/joao/Projetos/SistemasInteligentes/VictimSim2/models/modelo_rede_neural.h5')
-        regressor = 
+    
+        if os.path.exists('/home/joao/Projetos/SistemasInteligentes/VictimSim2/models/model.pkl'):
+                model = joblib.load('/home/joao/Projetos/SistemasInteligentes/VictimSim2/models/model.pkl')
+
+        
+        #regressor = 
         for vic_id, values in self.victims.items():
-            x, y = values[0]
-            vs = values[1]
-            #print(vs)
-            vs_scaled = classificador.transform([vs[3:6]])
-            predict = float(regressor.predict(vs_scaled)[0])
-            values[1].pop(-1)
-            values[1].extend([predict, 0])  # predict the severity value
+
+            
+                qPA = values[1][3]
+                pulso = values[1][4]
+                freqResp = values[1][5]
+
+                victim_data = pd.DataFrame([{
+                    'qPA': qPA,
+                    'pulso': pulso,
+                    'freqResp': freqResp
+                }]) 
+
+                y_pred = model.predict(victim_data.to_numpy())  # Uma classe, ex: [2]
+                severity_value = random.uniform(0.1, 99.9)          # to be replaced by a regressor 
+                severity_class = int(y_pred[0])
+                values[1].extend([severity_value, severity_class])  # append to the list of vital signals; values is a pair( (x,y), [<vital signals list>] )
+
+
+
+
+                
+            
             
 
     def create_population(self, sequence, pop_size):
@@ -182,11 +203,16 @@ class Rescuer(AbstAgent):
         population = []
 
         # Create a few individuals using a greedy approach
-        for _ in range(pop_size // 2):
-            individual = self.greedy_individual(sequence)
-            population.append(individual)
+        #for _ in range(pop_size // 2):
+        #    individual = self.greedy_individual(sequence)
+        #    population.append(individual)
 
         # Create the rest of the population using random shuffling
+        #for _ in range(pop_size - len(population)):
+        #    individual = list(sequence.items())
+        #    random.shuffle(individual)
+        #    population.append(dict(individual))
+
         for _ in range(pop_size - len(population)):
             individual = list(sequence.items())
             random.shuffle(individual)
